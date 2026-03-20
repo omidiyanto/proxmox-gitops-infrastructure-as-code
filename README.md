@@ -1,4 +1,12 @@
 # Proxmox GitOps Infrastructure as Code
+<div align="center">
+    <!-- Your badges here -->
+    <img src="https://img.shields.io/badge/packer-blue?style=for-the-badge&logo=packer&logoColor=white">
+    <img src="https://img.shields.io/badge/cicd_github_actions-%23000.svg?style=for-the-badge&logo=github-actions&logoColor=white">
+    <img src="https://img.shields.io/badge/terraform-%238511FA.svg?style=for-the-badge&logo=terraform&logoColor=white">
+    <img src="https://img.shields.io/badge/proxmox-%23FF6F00.svg?style=for-the-badge&logo=proxmox&logoColor=white">
+</div>
+<br>
 
 This repository provides a complete, automated Infrastructure-as-Code (IaC) pipeline for managing virtual machines in a Proxmox Virtual Environment (PVE). It leverages **Packer** to build golden OS templates, **GitHub Actions** for CI/CD automation over a secure **Tailscale VPN**, and **Terraform** modules to provision immutable infrastructure from those templates.
 
