@@ -16,7 +16,7 @@ autoinstall:
       - '__SSH_PUBLIC_KEY__'
   storage:
     layout:
-      name: direct
+      name: lvm
   apt:
     geoip: true
     primary:
@@ -39,5 +39,6 @@ autoinstall:
     - curtin in-target --target=/target -- chmod 600 /home/ubuntu/.ssh/authorized_keys /root/.ssh/authorized_keys
     - curtin in-target --target=/target -- chown ubuntu:ubuntu /home/ubuntu/.ssh/authorized_keys
     - curtin in-target --target=/target -- systemctl enable qemu-guest-agent
+    - curtin in-target --target=/target -- lvextend -r -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
   user-data:
     disable_root: false

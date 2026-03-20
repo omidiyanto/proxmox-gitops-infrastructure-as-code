@@ -50,7 +50,6 @@ source "proxmox-iso" "ubuntu" {
     type         = "scsi"
   }
 
-  # --- METODE CD-ROM (WAJIB UNTUK TAILSCALE RUNNER) ---
   additional_iso_files {
     cd_files = [
       "http/user-data",
@@ -63,7 +62,6 @@ source "proxmox-iso" "ubuntu" {
 
   boot_wait = "10s"
 
-  # --- BOOT COMMAND GRUB CLI ---
   boot_command = [
     "c<wait>",
     "linux /casper/vmlinuz --- autoinstall ds=nocloud",
