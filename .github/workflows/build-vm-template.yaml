@@ -1,0 +1,199 @@
+name: Build VM Template
+on:
+  workflow_dispatch:
+    inputs:
+      os_version:
+        description: 'Select OS'
+        required: true
+        type: choice
+        options:
+          - ubuntu-24.04
+          - ubuntu-22.04
+          - ubuntu-25.10
+      iso_source:
+        description: 'ISO Source (Existing in Local or Download from URL)'
+        required: true
+        type: choice
+        options:
+          - local
+          - url
+      iso_storage_pool:
+        description: 'Datastore for ISO (ex: local)'
+        required: true
+        default: 'local'
+      vm_id:
+        description: 'Proxmox VM ID (ex: 900)'
+        required: true
+        default: '900'
+      vm_name:
+        description: 'VM Template Name'
+        required: true
+        default: 'vm-template'
+      cpu_cores:
+        description: 'CPU Cores'
+        required: true
+        default: '2'
+      memory_mb:
+        description: 'RAM (MB)'
+        required: true
+        default: '2048'
+      disk_size:
+        description: 'Disk Size (ex: 20G)'
+        required: true
+        default: '20G'
+      storage_pool:
+        description: 'Target Datastore VM (ex: local-lvm)'
+        required: true
+        default: 'local-lvm'
+      network_bridge:
+        description: 'Network Bridge (ex: vmbr0)'
+        required: true
+        default: 'vmbr0'
+      cloud_init_password:
+        description: 'Password for user "ubuntu"'
+        required: true
+        type: string
+      install_docker:
+        description: 'Install Docker?'
+        type: boolean
+        default: true
+      install_nginx:
+        description: 'Install Nginx?'
+        type: boolean
+        default: false
+
+jobs:
+  build-template:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Connect to Tailscale VPN
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@main
+        with:
+          version: "latest"
+
+      - name: Install dependencies (mkpasswd, jq, xorriso)
+        run: sudo apt-get update && sudo apt-get install -y whois jq curl xorriso
+
+      - name: Decode SSH Keys
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY_B64 }}" | base64 --decode > packer/ssh_key_for_packer
+          chmod 600 packer/ssh_key_for_packer
+          echo "${{ secrets.SSH_PUBLIC_KEY_B64 }}" | base64 --decode > packer/ssh_pub_key.pub
+
+      - name: Pre-flight Check (Idempotency & Secrets)
+        run: |
+          if [ -z "${{ secrets.PROXMOX_API_URL }}" ]; then
+            echo "::error::Secret PROXMOX_API_URL kosong! Pastikan formatnya https://<IP>:8006/api2/json"
+            exit 1
+          fi
+
+          echo "Checking if VM Name '${{ inputs.vm_name }}' or ID '${{ inputs.vm_id }}' exists..."
+          
+          RESPONSE=$(curl -s -k -H "Authorization: PVEAPIToken=${{ secrets.PROXMOX_TOKEN_ID }}=${{ secrets.PROXMOX_TOKEN_SECRET }}" "${{ secrets.PROXMOX_API_URL }}/cluster/resources?type=vm")
+          
+          ERROR_MSG=$(echo $RESPONSE | jq -r '.data' 2>/dev/null)
+          if [ "$ERROR_MSG" == "null" ] || [ -z "$ERROR_MSG" ]; then
+             echo "::error::Failed connecting to Proxmox API. Check the connection or token! Response: $RESPONSE"
+             exit 1
+          fi
+          
+          VM_EXISTS=$(echo $RESPONSE | jq -r ".data[] | select(.name == \"${{ inputs.vm_name }}\" or .vmid == ${{ inputs.vm_id }}) | .name")
+          
+          if [ ! -z "$VM_EXISTS" ]; then
+            echo "::error::VM/Template with that ID/NAME is exists in Proxmox! Aborting."
+            exit 1
+          fi
+          echo "Validation complete, continuing..."
+
+      - name: Generate Dynamic Cloud-Init (user-data)
+        run: |
+          cd packer
+          HASHED_PASS=$(mkpasswd -m sha-512 "${{ inputs.cloud_init_password }}")
+          SSH_PUB=$(cat ssh_pub_key.pub)
+
+          echo "instance-id: packer-ubuntu" > http/meta-data
+          echo "local-hostname: ubuntu-template" >> http/meta-data
+
+          cp http/user-data.template http/user-data
+          sed -i "s|__PASSWORD_HASH__|$HASHED_PASS|g" http/user-data
+          sed -i "s|__SSH_PUBLIC_KEY__|$SSH_PUB|g" http/user-data
+
+          if [ "${{ inputs.install_docker }}" == "true" ] || [ "${{ inputs.install_nginx }}" == "true" ]; then
+            echo "    write_files:" >> http/user-data
+            echo "    runcmd:" >> http/user-data.runcmd
+
+            if [ "${{ inputs.install_docker }}" == "true" ]; then
+              echo "      - path: /opt/scripts/docker.sh" >> http/user-data
+              echo "        permissions: '0755'" >> http/user-data
+              echo "        content: |" >> http/user-data
+              sed 's/^/          /' scripts/docker.sh >> http/user-data
+              echo "" >> http/user-data   
+              echo "      - bash /opt/scripts/docker.sh" >> http/user-data.runcmd
+            fi
+
+            if [ "${{ inputs.install_nginx }}" == "true" ]; then
+              echo "      - path: /opt/scripts/nginx.sh" >> http/user-data
+              echo "        permissions: '0755'" >> http/user-data
+              echo "        content: |" >> http/user-data
+              sed 's/^/          /' scripts/nginx.sh >> http/user-data
+              echo "" >> http/user-data   # <-- FIX: Paksa baris baru (newline)
+              echo "      - bash /opt/scripts/nginx.sh" >> http/user-data.runcmd
+            fi
+
+            cat http/user-data.runcmd >> http/user-data
+          fi
+
+      - name: Setup Packer Variables
+        run: |
+          cd packer
+          ISO_URL=$(jq -r '."${{ inputs.os_version }}".iso_url' configs/os_map.json)
+          ISO_CHECKSUM=$(jq -r '."${{ inputs.os_version }}".iso_checksum' configs/os_map.json)
+          ISO_FILE_NAME=$(jq -r '."${{ inputs.os_version }}".iso_file_name' configs/os_map.json)
+
+          if [ "${{ inputs.iso_source }}" == "local" ]; then
+            FINAL_ISO_FILE="${{ inputs.iso_storage_pool }}:iso/$ISO_FILE_NAME"
+            FINAL_ISO_URL=""
+          else
+            FINAL_ISO_FILE=""
+            FINAL_ISO_URL="$ISO_URL"
+          fi
+
+          API_URL="${{ secrets.PROXMOX_API_URL }}"
+          TEMP_URL="${API_URL#*://}"
+          PROXMOX_IP="${TEMP_URL%%:*}"
+
+          cat <<EOF > dynamic.auto.pkrvars.hcl
+          proxmox_api_url        = "${{ secrets.PROXMOX_API_URL }}"
+          proxmox_api_token_id   = "${{ secrets.PROXMOX_TOKEN_ID }}"
+          proxmox_api_token_secret = "${{ secrets.PROXMOX_TOKEN_SECRET }}"
+          proxmox_ip             = "$PROXMOX_IP"
+          vm_id                  = ${{ inputs.vm_id }}
+          vm_name                = "${{ inputs.vm_name }}"
+          cpu_cores              = ${{ inputs.cpu_cores }}
+          memory_mb              = ${{ inputs.memory_mb }}
+          disk_size              = "${{ inputs.disk_size }}"
+          storage_pool           = "${{ inputs.storage_pool }}"
+          iso_url                = "$FINAL_ISO_URL"
+          iso_file               = "$FINAL_ISO_FILE"
+          iso_checksum           = "$ISO_CHECKSUM"
+          iso_storage_pool       = "${{ inputs.iso_storage_pool }}"
+          network_bridge         = "${{ inputs.network_bridge }}"
+          EOF
+
+      - name: Packer Init & Build
+        env:
+          PACKER_LOG: 1
+        run: |
+          cd packer
+          packer init .
+          packer build .

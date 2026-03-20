@@ -1,0 +1,123 @@
+# Proxmox GitOps Infrastructure as Code
+
+This repository provides a complete, automated Infrastructure-as-Code (IaC) pipeline for managing virtual machines in a Proxmox Virtual Environment (PVE). It leverages **Packer** to build golden OS templates, **GitHub Actions** for CI/CD automation over a secure **Tailscale VPN**, and **Terraform** modules to provision immutable infrastructure from those templates.
+
+---
+
+## 🚀 Features
+
+* **Automated Golden Templates:** Build Ubuntu templates (22.04, 24.04, 25.10) dynamically via GitHub Actions using HashiCorp Packer.
+* **Secure CI/CD Integration:** Uses Tailscale to securely connect GitHub Actions runners to your private Proxmox cluster without exposing Proxmox to the public internet.
+* **Dynamic Cloud-Init:** Automatically injects hashed passwords, SSH keys, and optional pre-baked software (Docker, Nginx) into the templates during the Packer build phase.
+* **Idempotency Protection:** Pre-flight checks in the pipeline prevent overwriting existing VMs or templates in Proxmox.
+* **Reusable Terraform Modules:** Clean, modular Terraform setup using the modern `bpg/proxmox` provider to clone templates and assign network/cloud-init configurations.
+
+---
+
+## 📂 Repository Structure
+
+```text
+.
+├── .github/
+│   └── workflows/
+│       └── build-vm-template.yaml  # GitHub Actions pipeline for Packer builds
+├── packer/
+│   ├── configs/
+│   │   └── os_map.json             # Maps Ubuntu versions to ISO URLs & checksums
+│   ├── http/
+│   │   └── user-data.template      # Base Cloud-Init autoinstall configuration
+│   ├── scripts/
+│   │   ├── docker.sh               # Provisioning script for Docker
+│   │   └── nginx.sh                # Provisioning script for Nginx
+│   ├── dynamic.auto.pkrvars.hcl    # (Generated dynamically during pipeline)
+│   ├── ubuntu.pkr.hcl              # Main Packer build configuration
+│   └── variables.pkr.hcl           # Packer variables definition
+└── terraform/
+    └── modules/
+        └── proxmox_vm/             # Reusable Terraform module for provisioning VMs
+            ├── main.tf             # Core VM resource definition
+            ├── outputs.tf          # Exports IP address and VM name
+            ├── variables.tf        # Input variables (CPU, RAM, Disk, Cloud-Init)
+            └── versions.tf         # Requires bpg/proxmox >= 0.69.1
+```
+
+---
+
+## 🛠️ Prerequisites & Setup
+
+### GitHub Secrets Required
+To use the automated Packer build pipeline, you must configure the following **Repository Secrets** in GitHub:
+
+| Secret Name | Description |
+| :--- | :--- |
+| `TS_OAUTH_CLIENT_ID` | Tailscale OAuth Client ID (to connect runner to your VPN). |
+| `TS_OAUTH_SECRET` | Tailscale OAuth Secret. |
+| `PROXMOX_API_URL` | Your Tailnet Proxmox API Endpoint (e.g., `https://pve.tail1a8407.ts.net:8006/api2/json`). |
+| `PROXMOX_TOKEN_ID` | Proxmox API Token ID (e.g., `root@pam!github-actions`). |
+| `PROXMOX_TOKEN_SECRET` | Proxmox API Token Secret/UUID. |
+| `SSH_PRIVATE_KEY_B64` | Base64 encoded private SSH key (used by Packer to connect during build). |
+| `SSH_PUBLIC_KEY_B64` | Base64 encoded public SSH key (injected into the `ubuntu` user). |
+
+---
+
+## 🏗️ Phase 1: Building Templates (Packer + GitHub Actions)
+
+VM Templates are built on-demand via the GitHub Actions UI. 
+
+1. Go to the **Actions** tab in your GitHub repository.
+2. Select **Build VM Template with Packer on Proxmox**.
+3. Click **Run workflow** and configure the inputs:
+   * **OS Version:** Ubuntu 22.04, 24.04, or 25.10.
+   * **ISO Source:** Choose `local` (if already on your Proxmox datastore) or `url` (to download directly from Ubuntu).
+   * **VM ID & Name:** Target ID (e.g., `900`) and Name (e.g., `ubuntu-2404-template`) for the resulting Proxmox template.
+   * **Hardware:** Specify base CPU, RAM, and Disk size.
+   * **Provisioning:** Optionally toggle **Install Docker** and/or **Install Nginx**.
+   * **Cloud-Init Password:** Define the default password for the `ubuntu` user.
+
+The pipeline will connect via Tailscale, validate that the VM ID/Name doesn't already exist, dynamically construct the `user-data` file, and trigger the Packer build.
+
+---
+
+## 🚀 Phase 2: Provisioning Infrastructure (Terraform)
+
+Once your golden templates exist in Proxmox, you can rapidly deploy instances from **any other repository** by referencing this repository's Terraform module remotely. This ensures all your infrastructure adheres to the same standardized configurations.
+
+### Example Usage (Remote Module)
+
+In your target environment repository (e.g., `my-app`), create a `main.tf` file and reference the remote Git module:
+
+```hcl
+module "web_server" {
+  # Remote module source using double slash (//) to point to the sub-directory
+  # You can also pin to a specific branch or tag by adding ?ref=main or ?ref=v1.0.0
+  source = "git::[https://github.com/omidiyanto/proxmox-gitops-infrastructure-as-code.git//terraform/modules/proxmox_vm](https://github.com/omidiyanto/proxmox-gitops-infrastructure-as-code.git//terraform/modules/proxmox_vm)"
+
+  node_name   = "pve"
+  vm_name     = "prod-web-01"
+  clone_vm_id = 900                 # ID of the template built by Packer
+
+  # Hardware
+  cpu_cores = 4
+  memory_mb = 4096
+  disk_size = 30
+  
+  # Network & Cloud-Init
+  network_bridge  = "vmbr0"
+  ip_address      = "192.168.1.50/24"
+  gateway         = "192.168.1.1"
+  ci_user         = "ubuntu"
+  ssh_public_keys = ["ssh-ed25519 AAAAC3... user@machine"]
+}
+
+output "web_server_ip" {
+  value = module.web_server.vm_ipv4_address
+}
+
+### Applying the Configuration
+
+```bash
+cd terraform/
+terraform init
+terraform plan
+terraform apply
+```

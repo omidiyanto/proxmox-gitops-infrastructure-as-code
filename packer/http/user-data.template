@@ -1,0 +1,43 @@
+#cloud-config
+autoinstall:
+  version: 1
+  early-commands:
+  # Stop ssh for packer
+  - sudo systemctl stop ssh
+  locale: en_US
+  identity:
+    hostname: ubuntu-server
+    username: ubuntu
+    password: '__PASSWORD_HASH__'
+  ssh:
+    install-server: yes
+    allow-pw: yes
+    authorized-keys:
+      - '__SSH_PUBLIC_KEY__'
+  storage:
+    layout:
+      name: direct
+  apt:
+    geoip: true
+    primary:
+    - arches: [ i386, amd64 ]
+      uri: "http://archive.ubuntu.com/ubuntu"
+  packages:
+  - openssh-server
+  - qemu-guest-agent
+  - cloud-init
+  late-commands:
+    - curtin in-target --target=/target -- bash -c 'id -u ubuntu &>/dev/null || useradd -m -s /bin/bash ubuntu'
+    - sed -i -e 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/g' /target/etc/ssh/sshd_config
+    - sed -i -e 's/^#\?PermitRootLogin.*/PermitRootLogin yes/g' /target/etc/ssh/sshd_config
+    - echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/ubuntu
+    - curtin in-target --target=/target -- chmod 440 /etc/sudoers.d/ubuntu
+    - curtin in-target --target=/target -- mkdir -p /home/ubuntu/.ssh /root/.ssh
+    - curtin in-target --target=/target -- chown ubuntu:ubuntu /home/ubuntu/.ssh
+    - echo '__SSH_PUBLIC_KEY__' >> /target/home/ubuntu/.ssh/authorized_keys
+    - echo '__SSH_PUBLIC_KEY__' >> /target/root/.ssh/authorized_keys
+    - curtin in-target --target=/target -- chmod 600 /home/ubuntu/.ssh/authorized_keys /root/.ssh/authorized_keys
+    - curtin in-target --target=/target -- chown ubuntu:ubuntu /home/ubuntu/.ssh/authorized_keys
+    - curtin in-target --target=/target -- systemctl enable qemu-guest-agent
+  user-data:
+    disable_root: false

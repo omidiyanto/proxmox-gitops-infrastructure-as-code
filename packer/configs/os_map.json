@@ -1,0 +1,17 @@
+{
+  "ubuntu-22.04": {
+    "iso_url": "https://releases.ubuntu.com/22.04/ubuntu-22.04.5-live-server-amd64.iso",
+    "iso_checksum": "9bc6028870aef3f74f4e16b900008179e78b130e6b0b9a140635434a46aa98b0",
+    "iso_file_name": "ubuntu-22.04.5-live-server-amd64.iso"
+  },
+  "ubuntu-24.04": {
+    "iso_url": "https://releases.ubuntu.com/24.04/ubuntu-24.04.4-live-server-amd64.iso",
+    "iso_checksum": "e907d92eeec9df64163a7e454cbc8d7755e8ddc7ed42f99dbc80c40f1a138433",
+    "iso_file_name": "ubuntu-24.04.4-live-server-amd64.iso"
+  },
+  "ubuntu-25.10": {
+    "iso_url": "https://releases.ubuntu.com/25.10/ubuntu-25.10-live-server-amd64.iso",
+    "iso_checksum": "dc54870e5261c0abad19f74b8146659d10e625971792bd42d7ecde820b60a1d0",
+    "iso_file_name": "ubuntu-25.10-live-server-amd64.iso"
+  }
+}
