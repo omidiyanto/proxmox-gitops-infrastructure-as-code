@@ -36,7 +36,7 @@ resource "proxmox_virtual_environment_vm" "this" {
 
   # --- INJEKSI CLOUD-INIT ---
   initialization {
-    upgrade_packages = false
+    upgrade = false
     dynamic "dns" {
       for_each = length(var.dns_servers) > 0 ? [1] : []
       content {
