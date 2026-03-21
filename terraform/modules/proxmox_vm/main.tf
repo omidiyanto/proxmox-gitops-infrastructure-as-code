@@ -15,7 +15,7 @@ resource "proxmox_virtual_environment_vm" "this" {
 
   cpu {
     cores = var.cpu_cores
-    type  = "x86-64-v2-AES" # Optimal untuk Proxmox
+    type  = "host"
   }
 
   memory {
@@ -36,6 +36,13 @@ resource "proxmox_virtual_environment_vm" "this" {
 
   # --- INJEKSI CLOUD-INIT ---
   initialization {
+    upgrade_packages = false
+    dynamic "dns" {
+      for_each = length(var.dns_servers) > 0 ? [1] : []
+      content {
+        servers = var.dns_servers
+      }
+    }
     ip_config {
       ipv4 {
         address = var.ip_address

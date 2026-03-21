@@ -58,6 +58,12 @@ variable "gateway" {
   default     = ""
 }
 
+variable "dns_servers" {
+  description = "Daftar DNS Servers"
+  type        = list(string)
+  default     = []
+}
+
 variable "ssh_public_keys" {
   description = "List SSH Public Key untuk dimasukkan ke VM"
   type        = list(string)
