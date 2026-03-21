@@ -1,21 +1,21 @@
 variable "node_name" {
-  description = "Nama node Proxmox (misal: pve)"
+  description = "Proxmox Node Name (ex: pve)"
   type        = string
 }
 
 variable "vm_id" {
-  description = "ID untuk VM baru"
+  description = "VM ID"
   type        = number
-  default     = null # Jika null, Proxmox akan mencarikan ID kosong secara otomatis
+  default     = null 
 }
 
 variable "vm_name" {
-  description = "Nama VM baru"
+  description = "VM Name"
   type        = string
 }
 
 variable "clone_vm_id" {
-  description = "ID dari VM Template yang ingin di-clone (misal: 900)"
+  description = "VM Template ID"
   type        = number
 }
 
@@ -30,7 +30,7 @@ variable "memory_mb" {
 }
 
 variable "disk_size" {
-  description = "Ukuran disk dalam GB"
+  description = "Disk Size in GB"
   type        = number
   default     = 20
 }
@@ -45,27 +45,26 @@ variable "network_bridge" {
   default = "vmbr0"
 }
 
-# --- Cloud-Init Variables ---
 variable "ip_address" {
-  description = "IP Address dengan CIDR (misal: 192.168.1.100/24) atau dhcp"
+  description = "IP Address with CIDR (ex: 192.168.1.100/24) or dhcp"
   type        = string
   default     = "dhcp"
 }
 
 variable "gateway" {
-  description = "IP Gateway (misal: 192.168.1.1). Kosongkan jika DHCP"
+  description = "IP Gateway (ex: 192.168.1.1). If DHCP, Let it empty"
   type        = string
   default     = ""
 }
 
 variable "dns_servers" {
-  description = "Daftar DNS Servers"
+  description = "DNS Servers list"
   type        = list(string)
   default     = []
 }
 
 variable "ssh_public_keys" {
-  description = "List SSH Public Key untuk dimasukkan ke VM"
+  description = "SSH Public Key"
   type        = list(string)
   default     = []
 }
@@ -77,7 +76,7 @@ variable "ci_user" {
 }
 
 variable "user_data_file_id" {
-  description = "ID File snippet user-data khusus jika butuh injeksi script lanjutan"
+  description = "ID File snippet user-data for additional cloud-init scripts"
   type        = string
   default     = null
 }

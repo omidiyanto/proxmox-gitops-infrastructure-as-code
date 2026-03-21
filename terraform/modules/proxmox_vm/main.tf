@@ -3,7 +3,7 @@ resource "proxmox_virtual_environment_vm" "this" {
   node_name = var.node_name
   vm_id     = var.vm_id
 
-  # Fitur utama: Clone dari Packer Template
+  # Clone from VM Template (Golden Image) builded by Packer
   clone {
     vm_id = var.clone_vm_id
     full  = true
@@ -34,7 +34,6 @@ resource "proxmox_virtual_environment_vm" "this" {
     model  = "virtio"
   }
 
-  # --- INJEKSI CLOUD-INIT ---
   initialization {
     dynamic "dns" {
       for_each = length(var.dns_servers) > 0 ? [1] : []
@@ -54,11 +53,10 @@ resource "proxmox_virtual_environment_vm" "this" {
       keys     = var.ssh_public_keys
     }
 
-    # Jika repostiory pemanggil ingin menambah script (misal: docker run patroni)
     user_data_file_id = var.user_data_file_id
   }
 
   operating_system {
-    type = "l26" # L26 = Linux 2.6+ kernel
+    type = "l26" 
   }
 }

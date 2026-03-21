@@ -1,5 +1,5 @@
 output "vm_ipv4_address" {
-  description = "IP Address VM yang diberikan oleh Proxmox QEMU Agent"
+  description = "VM IP Address"
   value       = proxmox_virtual_environment_vm.this.ipv4_addresses[1][0]
 }
 
