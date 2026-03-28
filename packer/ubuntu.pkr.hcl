@@ -74,7 +74,7 @@ source "proxmox-iso" "ubuntu" {
 
   ssh_username               = "ubuntu"
   ssh_private_key_file       = "ssh_key_for_packer"
-  ssh_timeout                = "60m"
+  ssh_timeout                = "360m"
   ssh_bastion_host           = var.proxmox_ip
   ssh_bastion_username       = "root"
   ssh_bastion_private_key_file = "ssh_key_for_packer"
