@@ -55,7 +55,7 @@ source "proxmox-iso" "ubuntu" {
       "http/user-data",
       "http/meta-data"
     ]
-    cd_label         = "cidata" # Label ini sangat penting agar terdeteksi ds=nocloud
+    cd_label         = "cidata"
     iso_storage_pool = var.iso_storage_pool
     unmount          = true
   }
@@ -85,7 +85,7 @@ build {
 
   provisioner "shell" {
     inline = [
-      "while [ ! -f /var/lib/cloud/instance/boot-finished ]; do echo 'Menunggu cloud-init...'; sleep 2; done",
+      "while [ ! -f /var/lib/cloud/instance/boot-finished ]; do echo 'Waiting for cloud-init...'; sleep 2; done",
       "sudo cloud-init clean",
       "sudo rm -rf /etc/cloud/cloud.cfg.d/*",
       "sudo truncate -s 0 /etc/machine-id",
