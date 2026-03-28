@@ -147,3 +147,17 @@ terraform init
 terraform plan
 terraform apply
 ```
+
+---
+
+## 🤝 How to Contribute
+
+Contributions are always welcome! We appreciate any help to improve this Infrastructure-as-Code repository.
+
+**Some simple ways to contribute:**
+- **Add Cloud Images List**: Even simple contributions like adding a new OS mapping to the `cloud-images/images.json` file (and updating the dropdown option in GitHub Actions) are highly appreciated and will be warmly welcomed!
+- **Improve Terraform Modules**: Add support for other Proxmox resources.
+- **Bug Fixes**: Fix issues in automation scripts or GitHub Actions workflows.
+- **Documentation**: Enhance the clarity of `README.md` or provide new usage examples.
+
+Feel free to open an *Issue* or submit a *Pull Request* (PR)!
