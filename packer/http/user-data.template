@@ -1,6 +1,8 @@
 #cloud-config
 autoinstall:
   version: 1
+  refresh-installer:
+    update: no
   early-commands:
   # Stop ssh for packer
   - sudo systemctl stop ssh
@@ -18,10 +20,13 @@ autoinstall:
     layout:
       name: lvm
   apt:
-    geoip: true
+    geoip: false
     primary:
     - arches: [ i386, amd64 ]
-      uri: "http://archive.ubuntu.com/ubuntu"
+      uri: "http://id.archive.ubuntu.com/ubuntu"
+    security:
+    - arches: [ i386, amd64 ]
+      uri: "http://id.archive.ubuntu.com/ubuntu"
   packages:
   - openssh-server
   - qemu-guest-agent
