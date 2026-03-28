@@ -1,4 +1,4 @@
-name: Build VM Template
+name: Build Golden Image (VM Template) with Packer
 
 on:
   workflow_dispatch:

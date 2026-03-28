@@ -1,0 +1,198 @@
+name: Build VM Template with Cloud-Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      os_version:
+        description: 'Select OS'
+        required: true
+        type: choice
+        options:
+          - ubuntu-24.04
+          - ubuntu-22.04
+          - ubuntu-25.10
+          - debian-12
+      vm_id:
+        description: 'Proxmox VM ID (ex: 900)'
+        required: true
+        default: '900'
+      vm_name:
+        description: 'VM Template Name'
+        required: true
+        default: 'vm-template'
+      cpu_cores:
+        description: 'CPU Cores'
+        required: true
+        default: '2'
+      memory_mb:
+        description: 'RAM (MB)'
+        required: true
+        default: '2048'
+      disk_size:
+        description: 'Disk Size (ex: 10G)'
+        required: true
+        default: '10G'
+      storage_pool:
+        description: 'Target Datastore VM (ex: local-lvm)'
+        required: true
+        default: 'local-lvm'
+      network_bridge:
+        description: 'Network Bridge (ex: vmbr0)'
+        required: true
+        default: 'vmbr0'
+      cloud_init_user:
+        description: 'Cloud Init User'
+        required: true
+        default: 'ubuntu'
+      cloud_init_password:
+        description: 'Password for Cloud Init User'
+        required: true
+        type: string
+
+jobs:
+  build-template:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Connect to Tailscale VPN
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Install dependencies (jq)
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Decode SSH Keys
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY_B64 }}" | base64 --decode > id_rsa
+          chmod 600 id_rsa
+          echo "${{ secrets.SSH_PUBLIC_KEY_B64 }}" | base64 --decode > id_rsa.pub
+
+      - name: Pre-flight Check (Idempotency & Secrets)
+        run: |
+          if [ -z "${{ secrets.PROXMOX_API_URL }}" ]; then
+            echo "::error::Secret PROXMOX_API_URL kosong! Pastikan formatnya https://<IP>:8006/api2/json"
+            exit 1
+          fi
+
+          echo "Checking if VM Name '${{ inputs.vm_name }}' or ID '${{ inputs.vm_id }}' exists..."
+          
+          RESPONSE=$(curl -s -k -H "Authorization: PVEAPIToken=${{ secrets.PROXMOX_TOKEN_ID }}=${{ secrets.PROXMOX_TOKEN_SECRET }}" "${{ secrets.PROXMOX_API_URL }}/cluster/resources?type=vm")
+          
+          ERROR_MSG=$(echo $RESPONSE | jq -r '.data' 2>/dev/null)
+          if [ "$ERROR_MSG" == "null" ] || [ -z "$ERROR_MSG" ]; then
+             echo "::error::Failed connecting to Proxmox API. Check the connection or token! Response: $RESPONSE"
+             exit 1
+          fi
+          
+          VM_EXISTS=$(echo $RESPONSE | jq -r ".data[] | select(.name == \"${{ inputs.vm_name }}\" or .vmid == ${{ inputs.vm_id }}) | .name")
+          
+          if [ ! -z "$VM_EXISTS" ]; then
+            echo "::error::VM/Template with that ID/NAME is exists in Proxmox! Aborting."
+            exit 1
+          fi
+          echo "Validation complete, continuing..."
+
+      - name: Deploy Cloud-Image to Proxmox Host
+        run: |
+          # Parse OS mapping
+          IMAGE_URL=$(jq -r '."${{ inputs.os_version }}".iso_url' cloud-images/images.json)
+          IMAGE_NAME=$(jq -r '."${{ inputs.os_version }}".iso_file_name' cloud-images/images.json)
+          
+          # Extract Proxmox IP from API URL
+          API_URL="${{ secrets.PROXMOX_API_URL }}"
+          TEMP_URL="${API_URL#*://}"
+          PROXMOX_IP="${TEMP_URL%%:*}"
+          
+          # Prepare the script to execute on Proxmox Host
+          cat << 'EOF' > deploy_script.sh
+          #!/bin/bash
+          set -e
+          
+          IMAGE_URL="$1"
+          IMAGE_NAME="$2"
+          VM_ID="$3"
+          VM_NAME="$4"
+          STORAGE="$5"
+          USER_NAME="$6"
+          USER_PASSWORD="$7"
+          DISK_SIZE="$8"
+          BRIDGE="$9"
+          CPU_CORES="${10}"
+          MEMORY_MB="${11}"
+          
+          echo "==========================================="
+          echo " Checking libguestfs-tools installation..."
+          echo "==========================================="
+          if ! dpkg -l | grep -qw libguestfs-tools; then
+            echo "Installing libguestfs-tools..."
+            apt-get update -y &>/dev/null
+            DEBIAN_FRONTEND=noninteractive apt-get install -y libguestfs-tools &>/dev/null
+          else
+            echo "libguestfs-tools is already installed."
+          fi
+          
+          IMAGE_DIR="/var/lib/vz/template/cloud-images"
+          mkdir -p "${IMAGE_DIR}"
+          IMAGE_PATH="${IMAGE_DIR}/${IMAGE_NAME}"
+          
+          echo "==========================================="
+          echo " Preparing Cloud-Image file..."
+          echo "==========================================="
+          if [ -f "${IMAGE_PATH}" ]; then
+            echo "Image file ${IMAGE_NAME} already exists in ${IMAGE_DIR}. Skipping download."
+          else
+            echo "Downloading ${IMAGE_NAME} from ${IMAGE_URL}..."
+            if ! wget -O "${IMAGE_PATH}" "${IMAGE_URL}" --show-progress; then
+              echo "Failed to download the image."
+              exit 1
+            fi
+            echo "Download complete! Saved to ${IMAGE_PATH}"
+          fi
+          
+          echo "==========================================="
+          echo " Customizing & Building VM Template..."
+          echo "==========================================="
+          # Copy to a temporary working file to avoid modifying the cached original image
+          TEMP_WORK_IMAGE="/tmp/work-${IMAGE_NAME}"
+          cp "${IMAGE_PATH}" "${TEMP_WORK_IMAGE}"
+          
+          qemu-img resize "${TEMP_WORK_IMAGE}" ${DISK_SIZE} &>/dev/null
+          
+          # Use virt-customize to install qemu-guest-agent inside the image
+          virt-customize -a "${TEMP_WORK_IMAGE}" --install qemu-guest-agent --truncate /etc/machine-id &>/dev/null
+          
+          qm create ${VM_ID} --name ${VM_NAME} --cores ${CPU_CORES} --memory ${MEMORY_MB} --net0 virtio,bridge=${BRIDGE} &>/dev/null
+          qm disk import ${VM_ID} "${TEMP_WORK_IMAGE}" ${STORAGE} &>/dev/null
+          
+          qm set ${VM_ID} --scsihw virtio-scsi-pci --scsi0 ${STORAGE}:vm-${VM_ID}-disk-0 &>/dev/null
+          qm set ${VM_ID} --ide0 ${STORAGE}:cloudinit &>/dev/null
+          qm set ${VM_ID} --boot c --bootdisk scsi0 &>/dev/null
+          qm set ${VM_ID} -agent 1 &>/dev/null
+          qm set ${VM_ID} --serial0 socket &>/dev/null
+          qm set ${VM_ID} --hotplug network,usb,disk &>/dev/null
+          qm set ${VM_ID} --ipconfig0 ip=dhcp &>/dev/null
+          
+          qm set ${VM_ID} --ciuser "${USER_NAME}" &>/dev/null
+          qm set ${VM_ID} --cipassword "${USER_PASSWORD}" &>/dev/null
+          
+          echo "Cleaning up temp image..."
+          rm -f "${TEMP_WORK_IMAGE}"
+          
+          echo "VM ${VM_NAME} (ID: ${VM_ID}) has been successfully imported!!!"
+          EOF
+          
+          echo "Uploading SSH public key to Proxmox Host (${PROXMOX_IP})..."
+          scp -o StrictHostKeyChecking=no -i id_rsa id_rsa.pub root@${PROXMOX_IP}:/tmp/id_rsa.pub
+          
+          echo "Executing script on Proxmox Host (${PROXMOX_IP})..."
+          ssh -o StrictHostKeyChecking=no -i id_rsa root@${PROXMOX_IP} "bash -s" < deploy_script.sh "$IMAGE_URL" "$IMAGE_NAME" "${{ inputs.vm_id }}" "${{ inputs.vm_name }}" "${{ inputs.storage_pool }}" "${{ inputs.cloud_init_user }}" "${{ inputs.cloud_init_password }}" "${{ inputs.disk_size }}" "${{ inputs.network_bridge }}" "${{ inputs.cpu_cores }}" "${{ inputs.memory_mb }}"
+          
+          echo "Configuring SSH Keys and converting to Template..."
+          ssh -o StrictHostKeyChecking=no -i id_rsa root@${PROXMOX_IP} "qm set ${{ inputs.vm_id }} --sshkeys /tmp/id_rsa.pub && qm template ${{ inputs.vm_id }} && rm -f /tmp/id_rsa.pub"
+
+          echo "✅ VM Template Builder finished successfully!"

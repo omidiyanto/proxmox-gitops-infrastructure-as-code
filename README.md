@@ -68,12 +68,12 @@ To use the automated Packer build pipeline, you must configure the following **R
 
 ---
 
-## 🏗️ Phase 1: Building Templates (Packer + GitHub Actions)
+## 🏗️ Phase 1.A: Building Templates (Packer + GitHub Actions)
 
 VM Templates are built on-demand via the GitHub Actions UI. 
 
 1. Go to the **Actions** tab in your GitHub repository.
-2. Select **Build VM Template with Packer on Proxmox**.
+2. Select **Build Golden Image (VM Template) with Packer**.
 3. Click **Run workflow** and configure the inputs:
    * **OS Version:** Ubuntu 22.04, 24.04, or 25.10.
    * **ISO Source:** Choose `local` (if already on your Proxmox datastore) or `url` (to download directly from Ubuntu).
@@ -83,6 +83,24 @@ VM Templates are built on-demand via the GitHub Actions UI.
    * **Cloud-Init Password:** Define the default password for the `ubuntu` user.
 
 The pipeline will connect via Tailscale, validate that the VM ID/Name doesn't already exist, dynamically construct the `user-data` file, and trigger the Packer build.
+
+---
+
+## ☁️ Phase 1.B: Building Templates (Cloud-Images + GitHub Actions)
+
+If you prefer building lightweight templates using official KVM Cloud-Images instead of Packer ISOs, you can use the **Build VM Template with Cloud-Images** workflow:
+
+1. Go to the **Actions** tab in your GitHub repository.
+2. Select **Build VM Template with Cloud-Images**.
+3. Click **Run workflow** and configure the inputs:
+   * **OS Version:** Ubuntu 22.04, 24.04, 25.10, or Debian 12 (Dropdown options fetched from `cloud-images/images.json`).
+   * **VM ID & Name:** Target ID (e.g., `910`) and Name (e.g., `ubuntu-cloud-template`).
+   * **Hardware:** CPU cores, RAM, Disk Size.
+   * **Cloud-Init Credentials:** Specify target cloud-init username (e.g., `ubuntu`) and password.
+
+> **Note on Access & Idempotency:**  
+> The workflow will connect to Tailscale, check via Proxmox API if the VM template already exists, and SSH into your Proxmox Node as `root` (using the same `SSH_PRIVATE_KEY_B64` secret in GitHub). Therefore, ensure the **public key** of your secret is added to the Proxmox Node's `~/.ssh/authorized_keys`.  
+> *It will install `libguestfs-tools` automatically on your Proxmox Host if not present, and cache the downloaded image to `/var/lib/vz/template/cloud-images/<filename>` persistently across job runs.*
 
 ---
 
