@@ -8,15 +8,15 @@
 </div>
 <br>
 
-This repository provides a complete, automated Infrastructure-as-Code (IaC) pipeline for managing virtual machines in a Proxmox Virtual Environment (PVE). It leverages **Packer** to build golden OS templates, **GitHub Actions** for CI/CD automation over a secure **Tailscale VPN**, and **Terraform** modules to provision immutable infrastructure from those templates.
+This repository provides a complete, automated Infrastructure-as-Code (IaC) pipeline for managing virtual machines in a Proxmox Virtual Environment (PVE). It leverages **Packer** and **KVM Cloud-Images** to build golden OS templates, **GitHub Actions** for CI/CD automation over a secure **Tailscale VPN**, and **Terraform** modules to provision immutable infrastructure from those templates.
 
 ---
 
 ## 🚀 Features
 
-* **Automated Golden Templates:** Build Ubuntu templates (22.04, 24.04, 25.10) dynamically via GitHub Actions using HashiCorp Packer.
+* **Automated Golden Templates:** Build OS templates dynamically via GitHub Actions using either Heavyweight Packer ISO-based builds or Lightweight KVM Cloud-Images directly on Proxmox.
 * **Secure CI/CD Integration:** Uses Tailscale to securely connect GitHub Actions runners to your private Proxmox cluster without exposing Proxmox to the public internet.
-* **Dynamic Cloud-Init:** Automatically injects hashed passwords, SSH keys, and optional pre-baked software (Docker, Nginx) into the templates during the Packer build phase.
+* **Dynamic Cloud-Init:** Automatically injects hashed passwords, SSH keys, and optional pre-baked software (Docker, Nginx) into the templates.
 * **Idempotency Protection:** Pre-flight checks in the pipeline prevent overwriting existing VMs or templates in Proxmox.
 * **Reusable Terraform Modules:** Clean, modular Terraform setup using the modern `bpg/proxmox` provider to clone templates and assign network/cloud-init configurations.
 
@@ -28,7 +28,10 @@ This repository provides a complete, automated Infrastructure-as-Code (IaC) pipe
 .
 ├── .github/
 │   └── workflows/
-│       └── build-vm-template.yaml  # GitHub Actions pipeline for Packer builds
+│       ├── build-golden-image.yaml             # GitHub Actions pipeline for Packer builds
+│       └── build-vm-template-cloud-images.yaml # GitHub Actions for Lightweight Cloud-Images
+├── cloud-images/
+│   └── images.json                 # Maps OS versions to official KVM Cloud-Image URLs
 ├── packer/
 │   ├── configs/
 │   │   └── os_map.json             # Maps Ubuntu versions to ISO URLs & checksums
@@ -54,7 +57,7 @@ This repository provides a complete, automated Infrastructure-as-Code (IaC) pipe
 ## 🛠️ Prerequisites & Setup
 
 ### GitHub Secrets Required
-To use the automated Packer build pipeline, you must configure the following **Repository Secrets** in GitHub:
+To use the automated build pipelines (both Packer and Cloud-Images), you must configure the following **Repository Secrets** in GitHub:
 
 | Secret Name | Description |
 | :--- | :--- |
