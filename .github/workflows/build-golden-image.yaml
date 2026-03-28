@@ -62,6 +62,10 @@ on:
         description: 'Install Nginx?'
         type: boolean
         default: false
+      pull_psql_ha_docker_images:
+        description: 'Pull HA PostgreSQL Docker Images?'
+        type: boolean
+        default: false
 
 jobs:
   build-template:
@@ -149,6 +153,15 @@ jobs:
               sed 's/^/          /' scripts/nginx.sh >> http/user-data
               echo "" >> http/user-data   # <-- FIX: Paksa baris baru (newline)
               echo "      - bash /opt/scripts/nginx.sh" >> http/user-data.runcmd
+            fi
+
+            if [ "${{ inputs.pull_psql_ha_docker_images }}" == "true" ]; then
+              echo "      - path: /opt/scripts/pull-psql-ha-docker-images.sh" >> http/user-data
+              echo "        permissions: '0755'" >> http/user-data
+              echo "        content: |" >> http/user-data
+              sed 's/^/          /' scripts/pull-psql-ha-docker-images.sh >> http/user-data
+              echo "" >> http/user-data
+              echo "      - bash /opt/scripts/pull-psql-ha-docker-images.sh" >> http/user-data.runcmd
             fi
 
             cat http/user-data.runcmd >> http/user-data
