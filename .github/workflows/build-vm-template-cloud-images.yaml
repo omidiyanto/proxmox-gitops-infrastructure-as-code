@@ -136,7 +136,7 @@ jobs:
             echo "libguestfs-tools is already installed."
           fi
           
-          IMAGE_DIR="/var/lib/vz/template/cloud-images"
+          IMAGE_DIR="/var/lib/vz/template/iso"
           mkdir -p "${IMAGE_DIR}"
           IMAGE_PATH="${IMAGE_DIR}/${IMAGE_NAME}"
           
